@@ -12,7 +12,9 @@ import lombok.core.AST;
 import lombok.core.AnnotationValues;
 import lombok.javac.JavacAnnotationHandler;
 import lombok.javac.JavacNode;
+import org.apache.commons.lang3.StringUtils;
 import org.kohsuke.MetaInfServices;
+import org.mvel2.MVEL;
 
 import java.util.regex.Pattern;
 
@@ -127,7 +129,11 @@ public class HandlePacket implements JavacAnnotationHandler<Packet> {
             String type = uncapitalize(fieldDecl.vartype.toString());
             JCStatement statement = null;
 
-            if (endsWithAny(type, "int", "integer")) {
+            JCExpression writer = findAnnotationArgs(field, "Out", "writer");
+            if (writer != null) {
+                statement = createInvokingStatement(maker, typeNode, "gbuf", "writeGeneric", List.<JCExpression>of(
+                        maker.Ident(fieldDecl.name),writer));
+            } else if (endsWithAny(type, "int", "integer")) {
                 statement = createInvokingStatement(maker, typeNode, "gbuf", "writeInt", fieldDecl.name);
             } else if (endsWithAny(type, "long")) {
                 statement = createInvokingStatement(maker, typeNode, "gbuf", "writeLong", fieldDecl.name);
@@ -152,6 +158,15 @@ public class HandlePacket implements JavacAnnotationHandler<Packet> {
 
             }
             if (statement != null) {
+                JCExpression ifAnnotation = findAnnotationArgs(field, "If", "value");
+                if (ifAnnotation != null) {
+                    String expr = (String) ((JCLiteral) ifAnnotation).getValue();
+                    statement = maker.If(maker.TypeCast(chainDots(maker,typeNode, "java", "lang", "Boolean"),
+                            maker.Apply(List.<JCExpression>nil(),
+                                    chainDots(maker, typeNode, "org", "mvel2", "MVEL", "eval"),
+                                    List.<JCExpression>of(maker.Literal(expr), maker.Ident(typeNode.toName("this"))))),
+                            statement,null);
+                }
                 statements.append(statement);
             }
         }
@@ -189,7 +204,13 @@ public class HandlePacket implements JavacAnnotationHandler<Packet> {
             JCVariableDecl fieldDecl = (JCVariableDecl) field.get();
             String type = uncapitalize(fieldDecl.vartype.toString());
             JCStatement statement = null;
-            if (endsWithAny(type, "int", "integer")) {
+
+            JCExpression reader = findAnnotationArgs(field, "In", "reader");
+            if (reader != null) {
+                statement = maker.Exec(maker.Assign(chainDots(maker, typeNode, "o", fieldDecl.name.toString()),
+                        createInvokingMethod(maker, typeNode, "src", "readGeneric", List.<JCExpression>of(
+                                reader))));
+            } else if (endsWithAny(type, "int", "integer")) {
                 statement = maker.Exec(maker.Assign(chainDots(maker, typeNode, "o", fieldDecl.name.toString()),
                         createInvokingMethod(maker, typeNode, "src", "readInt")));
             } else if (endsWithAny(type, "long")) {
@@ -221,6 +242,15 @@ public class HandlePacket implements JavacAnnotationHandler<Packet> {
 
             }
             if(statement != null) {
+                JCExpression ifAnnotation = findAnnotationArgs(field, "If", "value");
+                if (ifAnnotation != null) {
+                    String expr = (String) ((JCLiteral) ifAnnotation).getValue();
+                    statement = maker.If(maker.TypeCast(chainDots(maker,typeNode, "java", "lang", "Boolean"),
+                            maker.Apply(List.<JCExpression>nil(),
+                                    chainDots(maker, typeNode, "org", "mvel2", "MVEL", "eval"),
+                                    List.<JCExpression>of(maker.Literal(expr), maker.Ident(typeNode.toName("o"))))),
+                            statement,null);
+                }
                 tryStatements.append(statement);
             }
         }
@@ -242,6 +272,19 @@ public class HandlePacket implements JavacAnnotationHandler<Packet> {
                 List.<JCTypeParameter>nil(), List.<JCVariableDecl>of(param), List.<JCExpression>nil(), body, null);
 
         injectMethod(typeNode, methodDecl);
+    }
+    
+    public JCExpression findAnnotationArgs(JavacNode fieldNode, String annotationName, String argName) {
+        for (JCAnnotation annotation : findAnnotations(fieldNode, Pattern.compile(annotationName))) {
+            for (JCExpression arg : annotation.getArguments()) {
+                if (arg instanceof JCAssign) {
+                    if (StringUtils.equals(((JCAssign) arg).lhs.toString(), argName)) {
+                        return ((JCAssign) arg).rhs;
+                    }
+                }
+            }
+        }
+        return null;
     }
 
 }
