@@ -29,7 +29,6 @@ public class HandlePacket implements JavacAnnotationHandler<Packet> {
     public boolean handle(AnnotationValues<Packet> annotation, JCTree.JCAnnotation ast, JavacNode annotationNode) {
         markAnnotationAsProcessed(annotationNode, Packet.class);
         JavacNode typeNode = annotationNode.up();
-        System.out.println(typeNode);
         return generatePacketMethods(typeNode);
     }
 
@@ -144,6 +143,12 @@ public class HandlePacket implements JavacAnnotationHandler<Packet> {
                             maker.Ident(fieldDecl.name),
                             createWriteStatement(typeNode, maker, field, typeArgument, typeNode.toName("item")));
                 }
+            } else if (startsWith(type, "byte[]")) {
+                JCStatement sizeStatement = createInvokingStatement(maker, typeNode, "gbuf", "writeInt",
+                        List.<JCExpression>of(chainDots(maker, typeNode, fieldDecl.name.toString(), "length")));
+                statements.append(sizeStatement);
+
+                statement = createInvokingStatement(maker, typeNode, "gbuf", "writeBytes", fieldDecl.name);
             } else {
                 statement = createWriteStatement(typeNode, maker, field, type, fieldDecl.getName());
             }
@@ -251,6 +256,17 @@ public class HandlePacket implements JavacAnnotationHandler<Packet> {
                                     List.<JCExpression>of(createReadExpression(typeNode, maker, field, typeArgument)),
                                     "o", fieldDecl.name.toString(), "add")));
                 }
+            } else if (startsWith(type, "byte[]")) {
+                JCVariableDecl sizeStatement = createVarDef(typeNode, Flags.FINAL, fieldName + "Size",
+                        maker.TypeIdent(TypeTags.INT), createReadExpression(typeNode, maker, field, "int"));
+                tryStatements.append(sizeStatement);
+
+                statement = maker.Exec(maker.Assign(
+                        chainDots(maker, typeNode, "o", fieldDecl.name.toString()),
+                        maker.Apply(List.<JCExpression>nil(),
+                                maker.Select(createInvokingMethod(maker, typeNode, "src", "readBytes", sizeStatement.name),
+                                        typeNode.toName("array")),
+                                List.<JCExpression>nil())));
             } else {
                 statement = maker.Exec(maker.Assign(chainDots(maker, typeNode, "o", fieldDecl.name.toString()),
                         createReadExpression(typeNode, maker, field, type)));

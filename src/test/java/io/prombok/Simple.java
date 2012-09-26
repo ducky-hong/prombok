@@ -19,5 +19,6 @@ public class Simple {
     @In @Out public byte fieldByte;
     @In @Out public SimpleReference fieldReference;
     @In @Out public List<Integer> fieldList;
+    @In @Out byte[] fieldByteArray;
 
 }
