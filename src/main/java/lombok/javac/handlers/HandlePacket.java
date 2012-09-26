@@ -30,6 +30,7 @@ public class HandlePacket implements JavacAnnotationHandler<Packet> {
     public boolean handle(AnnotationValues<Packet> annotation, JCTree.JCAnnotation ast, JavacNode annotationNode) {
         markAnnotationAsProcessed(annotationNode, Packet.class);
         JavacNode typeNode = annotationNode.up();
+        System.out.println(typeNode);
         return generatePacketMethods(typeNode);
     }
 
@@ -155,7 +156,9 @@ public class HandlePacket implements JavacAnnotationHandler<Packet> {
                         chainDots(maker, typeNode, "io", "prombok", "codec", "DefaultStringByteCodec", "class")
                 ));
             } else {
-
+                statement = createInvokingStatement(maker, typeNode, "gbuf", "writeBytes", List.<JCExpression>of(
+                        createInvokingMethod(maker, typeNode, fieldDecl.name.toString(), "toByteBuf")
+                ));
             }
             if (statement != null) {
                 JCExpression ifAnnotation = findAnnotationArgs(field, "If", "value");
@@ -239,7 +242,8 @@ public class HandlePacket implements JavacAnnotationHandler<Packet> {
                         createInvokingMethod(maker, typeNode, "src", "readGeneric", List.<JCExpression>of(
                         chainDots(maker, typeNode, "io", "prombok", "codec", "DefaultStringByteCodec", "class")))));
             } else {
-
+                statement = maker.Exec(maker.Assign(chainDots(maker, typeNode, "o", fieldDecl.name.toString()),
+                        createInvokingMethod(maker, typeNode, fieldDecl.vartype.toString(), "from", typeNode.toName("src"))));
             }
             if(statement != null) {
                 JCExpression ifAnnotation = findAnnotationArgs(field, "If", "value");

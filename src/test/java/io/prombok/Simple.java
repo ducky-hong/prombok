@@ -11,9 +11,10 @@ import io.prombok.codec.SwappedLongByteCodec;
 public class Simple {
 
     @In @Out public int fieldInt;
-    @In(reader = SwappedLongByteCodec.class) public long fieldLong;
+    @In @Out public long fieldLong;
     @In @Out(writer = DefaultStringByteCodec.class) public String fieldString;
     @If("fieldInt > 0")
     @In @Out public byte fieldByte;
-    
+    @In @Out public SimpleReference fieldReference;
+
 }
