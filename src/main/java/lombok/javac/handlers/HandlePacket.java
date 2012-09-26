@@ -164,6 +164,8 @@ public class HandlePacket implements JavacAnnotationHandler<Packet> {
                             statement,null);
                 }
                 statements.append(statement);
+
+                injectAnnotationNoArgs(field, "lombok", "Setter");
             }
         }
 
@@ -283,6 +285,8 @@ public class HandlePacket implements JavacAnnotationHandler<Packet> {
                             statement,null);
                 }
                 tryStatements.append(statement);
+
+                injectAnnotationNoArgs(field, "lombok", "Getter");
             }
         }
 
@@ -370,6 +374,17 @@ public class HandlePacket implements JavacAnnotationHandler<Packet> {
                 maker.Binary(LT, maker.Ident(typeNode.toName("i")), conditionLt),
                 List.<JCExpressionStatement>of(maker.Exec(maker.Unary(POSTINC, maker.Ident(typeNode.toName("i"))))),
                 body);
+    }
+    
+    public void injectAnnotationNoArgs(JavacNode node, String... name) {
+        TreeMaker maker = node.getTreeMaker();
+        JCAnnotation annotation = maker.Annotation(chainDots(maker, node, name), List.<JCExpression>nil());
+        if (node.get() instanceof JCClassDecl) {
+            ((JCClassDecl) node.get()).mods.annotations = ((JCClassDecl) node.get()).mods.annotations.append(annotation);
+        } else if (node.get() instanceof JCVariableDecl) {
+            ((JCVariableDecl) node.get()).mods.annotations = ((JCVariableDecl) node.get()).mods.annotations.append(annotation);
+        }
+        node.add(annotation, AST.Kind.ANNOTATION).recursiveSetHandled();
     }
 
 }
