@@ -1,6 +1,7 @@
 package lombok.javac.handlers;
 
 import com.sun.tools.javac.code.Flags;
+import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.code.TypeTags;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeMaker;
@@ -14,14 +15,12 @@ import lombok.javac.JavacAnnotationHandler;
 import lombok.javac.JavacNode;
 import org.apache.commons.lang3.StringUtils;
 import org.kohsuke.MetaInfServices;
-import org.mvel2.MVEL;
 
 import java.util.regex.Pattern;
 
 import static com.sun.tools.javac.tree.JCTree.*;
 import static lombok.javac.handlers.JavacHandlerUtil.*;
-import static org.apache.commons.lang3.StringUtils.endsWithAny;
-import static org.apache.commons.lang3.StringUtils.uncapitalize;
+import static org.apache.commons.lang3.StringUtils.*;
 
 @MetaInfServices(JavacAnnotationHandler.class)
 public class HandlePacket implements JavacAnnotationHandler<Packet> {
@@ -98,6 +97,10 @@ public class HandlePacket implements JavacAnnotationHandler<Packet> {
         return maker.Apply(List.<JCExpression>nil(), chainDots(maker, typeNode, variableNmae, methodName), args);
     }
     
+    public JCMethodInvocation createInvokingMethod(TreeMaker maker, JavacNode typeNode, List<JCExpression> args, String... variableAndMethodName) {
+        return maker.Apply(List.<JCExpression>nil(), chainDots(maker, typeNode, variableAndMethodName), args);
+    }
+    
     public JCTry createDefaultExceptionBlock(TreeMaker maker, JavacNode typeNode, List<JCStatement> tryStatements, List<JCStatement> catchStatements, List<JCStatement> finallyStatements) {
         return maker.Try(
                 maker.Block(0, tryStatements),
@@ -124,42 +127,27 @@ public class HandlePacket implements JavacAnnotationHandler<Packet> {
         statements.append(byteBufDecl);
         statements.append(genericBufDecl);
 
-        ListBuffer<JCStatement> tryStatements = ListBuffer.lb();
         for (JavacNode field : fields) {
             JCVariableDecl fieldDecl = (JCVariableDecl) field.get();
-            String type = uncapitalize(fieldDecl.vartype.toString());
-            JCStatement statement = null;
+            String type = fieldDecl.vartype.toString();
 
-            JCExpression writer = findAnnotationArgs(field, "Out", "writer");
-            if (writer != null) {
-                statement = createInvokingStatement(maker, typeNode, "gbuf", "writeGeneric", List.<JCExpression>of(
-                        maker.Ident(fieldDecl.name),writer));
-            } else if (endsWithAny(type, "int", "integer")) {
-                statement = createInvokingStatement(maker, typeNode, "gbuf", "writeInt", fieldDecl.name);
-            } else if (endsWithAny(type, "long")) {
-                statement = createInvokingStatement(maker, typeNode, "gbuf", "writeLong", fieldDecl.name);
-            } else if (endsWithAny(type, "byte")) {
-                statement = createInvokingStatement(maker, typeNode, "gbuf", "writeByte", fieldDecl.name);
-            } else if (endsWithAny(type, "boolean")) {
-                statement = createInvokingStatement(maker, typeNode, "gbuf", "writeBoolean", fieldDecl.name);
-            } else if (endsWithAny(type, "short")) {
-                statement = createInvokingStatement(maker, typeNode, "gbuf", "writeShort", fieldDecl.name);
-            } else if (endsWithAny(type, "char", "character")) {
-                statement = createInvokingStatement(maker, typeNode, "gbuf", "writeChar", fieldDecl.name);
-            } else if (endsWithAny(type, "float")) {
-                statement = createInvokingStatement(maker, typeNode, "gbuf", "writeFloat", fieldDecl.name);
-            } else if (endsWithAny(type, "double")) {
-                statement = createInvokingStatement(maker, typeNode, "gbuf", "writeDouble", fieldDecl.name);
-            } else if (endsWithAny(type, "string")) {
-                statement = createInvokingStatement(maker, typeNode, "gbuf", "writeGeneric", List.<JCExpression>of(
-                        maker.Ident(fieldDecl.name),
-                        chainDots(maker, typeNode, "io", "prombok", "codec", "DefaultStringByteCodec", "class")
-                ));
+            JCStatement statement = null;
+            if (startsWith(type, "List")) {
+                String typeArgument = substringBetween(type, "<", ">");
+                if (typeArgument != null && !typeArgument.contains(",")) {
+                    JCStatement sizeStatement = createInvokingStatement(maker, typeNode, "gbuf", "writeInt",
+                            List.<JCExpression>of(createInvokingMethod(maker, typeNode, fieldDecl.name.toString(), "size")));
+                    statements.append(sizeStatement);
+
+                    statement = maker.ForeachLoop(
+                            createVarDef(typeNode, 0, "item", maker.Ident(typeNode.toName(typeArgument)), null),
+                            maker.Ident(fieldDecl.name),
+                            createWriteStatement(typeNode, maker, field, typeArgument, typeNode.toName("item")));
+                }
             } else {
-                statement = createInvokingStatement(maker, typeNode, "gbuf", "writeBytes", List.<JCExpression>of(
-                        createInvokingMethod(maker, typeNode, fieldDecl.name.toString(), "toByteBuf")
-                ));
+                statement = createWriteStatement(typeNode, maker, field, type, fieldDecl.getName());
             }
+
             if (statement != null) {
                 JCExpression ifAnnotation = findAnnotationArgs(field, "If", "value");
                 if (ifAnnotation != null) {
@@ -184,6 +172,42 @@ public class HandlePacket implements JavacAnnotationHandler<Packet> {
         injectMethod(typeNode, methodDecl);
     }
 
+    private JCStatement createWriteStatement(JavacNode typeNode, TreeMaker maker, JavacNode field, String type, Name name) {
+        type = uncapitalize(type);
+        JCStatement statement = null;
+        JCExpression writer = findAnnotationArgs(field, "Out", "writer");
+        if (writer != null) {
+            statement = createInvokingStatement(maker, typeNode, "gbuf", "writeGeneric", List.<JCExpression>of(
+                    maker.Ident(name), writer));
+        } else if (endsWithAny(type, "int", "integer")) {
+            statement = createInvokingStatement(maker, typeNode, "gbuf", "writeInt", name);
+        } else if (endsWithAny(type, "long")) {
+            statement = createInvokingStatement(maker, typeNode, "gbuf", "writeLong", name);
+        } else if (endsWithAny(type, "byte")) {
+            statement = createInvokingStatement(maker, typeNode, "gbuf", "writeByte", name);
+        } else if (endsWithAny(type, "boolean")) {
+            statement = createInvokingStatement(maker, typeNode, "gbuf", "writeBoolean", name);
+        } else if (endsWithAny(type, "short")) {
+            statement = createInvokingStatement(maker, typeNode, "gbuf", "writeShort", name);
+        } else if (endsWithAny(type, "char", "character")) {
+            statement = createInvokingStatement(maker, typeNode, "gbuf", "writeChar", name);
+        } else if (endsWithAny(type, "float")) {
+            statement = createInvokingStatement(maker, typeNode, "gbuf", "writeFloat", name);
+        } else if (endsWithAny(type, "double")) {
+            statement = createInvokingStatement(maker, typeNode, "gbuf", "writeDouble", name);
+        } else if (endsWithAny(type, "string")) {
+            statement = createInvokingStatement(maker, typeNode, "gbuf", "writeGeneric", List.<JCExpression>of(
+                    maker.Ident(name),
+                    chainDots(maker, typeNode, "io", "prombok", "codec", "DefaultStringByteCodec", "class")
+            ));
+        } else {
+            statement = createInvokingStatement(maker, typeNode, "gbuf", "writeBytes", List.<JCExpression>of(
+                    createInvokingMethod(maker, typeNode, name.toString(), "toByteBuf")
+            ));
+        }
+        return statement;
+    }
+
     public void generateUnmarshallingMethod(JavacNode typeNode, List<JavacNode> fields) {
         TreeMaker maker = typeNode.getTreeMaker();
         JCModifiers mods = maker.Modifiers(Flags.PUBLIC | Flags.STATIC);
@@ -205,46 +229,33 @@ public class HandlePacket implements JavacAnnotationHandler<Packet> {
 
         for (JavacNode field : fields) {
             JCVariableDecl fieldDecl = (JCVariableDecl) field.get();
-            String type = uncapitalize(fieldDecl.vartype.toString());
+            String type = fieldDecl.vartype.toString();
+            String fieldName = fieldDecl.name.toString();
             JCStatement statement = null;
 
-            JCExpression reader = findAnnotationArgs(field, "In", "reader");
-            if (reader != null) {
-                statement = maker.Exec(maker.Assign(chainDots(maker, typeNode, "o", fieldDecl.name.toString()),
-                        createInvokingMethod(maker, typeNode, "src", "readGeneric", List.<JCExpression>of(
-                                reader))));
-            } else if (endsWithAny(type, "int", "integer")) {
-                statement = maker.Exec(maker.Assign(chainDots(maker, typeNode, "o", fieldDecl.name.toString()),
-                        createInvokingMethod(maker, typeNode, "src", "readInt")));
-            } else if (endsWithAny(type, "long")) {
-                statement = maker.Exec(maker.Assign(chainDots(maker, typeNode, "o", fieldDecl.name.toString()),
-                        createInvokingMethod(maker, typeNode, "src", "readLong")));
-            } else if (endsWithAny(type, "byte")) {
-                statement = maker.Exec(maker.Assign(chainDots(maker, typeNode, "o", fieldDecl.name.toString()),
-                        createInvokingMethod(maker, typeNode, "src", "readByte")));
-            } else if (endsWithAny(type, "boolean")) {
-                statement = maker.Exec(maker.Assign(chainDots(maker, typeNode, "o", fieldDecl.name.toString()),
-                        maker.Binary(EQ, createInvokingMethod(maker, typeNode, "b", "readBoolean"), maker.Literal(1))));
-            } else if (endsWithAny(type, "short")) {
-                statement = maker.Exec(maker.Assign(chainDots(maker, typeNode, "o", fieldDecl.name.toString()),
-                        createInvokingMethod(maker, typeNode, "src", "readShort")));
-            } else if (endsWithAny(type, "char", "character")) {
-                statement = maker.Exec(maker.Assign(chainDots(maker, typeNode, "o", fieldDecl.name.toString()),
-                        createInvokingMethod(maker, typeNode, "src", "readChar")));
-            } else if (endsWithAny(type, "float")) {
-                statement = maker.Exec(maker.Assign(chainDots(maker, typeNode, "o", fieldDecl.name.toString()),
-                        createInvokingMethod(maker, typeNode, "src", "readFloat")));
-            } else if (endsWithAny(type, "double")) {
-                statement = maker.Exec(maker.Assign(chainDots(maker, typeNode, "o", fieldDecl.name.toString()),
-                        createInvokingMethod(maker, typeNode, "src", "readDouble")));
-            } else if (endsWithAny(type, "string")) {
-                statement = maker.Exec(maker.Assign(chainDots(maker, typeNode, "o", fieldDecl.name.toString()),
-                        createInvokingMethod(maker, typeNode, "src", "readGeneric", List.<JCExpression>of(
-                        chainDots(maker, typeNode, "io", "prombok", "codec", "DefaultStringByteCodec", "class")))));
+            if (startsWith(type, "List")) {
+                String typeArgument = substringBetween(type, "<", ">");
+                if (typeArgument != null && !typeArgument.contains(",")) {
+                    JCVariableDecl countStatement = createVarDef(typeNode, Flags.FINAL, fieldName + "Count",
+                            maker.TypeIdent(TypeTags.INT), createReadExpression(typeNode, maker, field, "int"));
+                    tryStatements.append(countStatement);
+
+                    JCExpressionStatement listConstructStatement = maker.Exec(maker.Assign(
+                            chainDots(maker, typeNode, "o", fieldDecl.name.toString()),
+                            createNewClass(typeNode, chainDots(maker, typeNode, "java", "util", "ArrayList"),
+                                    maker.Ident(countStatement.getName()))));
+                    tryStatements.append(listConstructStatement);
+
+                    statement = createInclForLoop(typeNode, maker.Ident(countStatement.getName()),
+                            maker.Exec(createInvokingMethod(maker, typeNode,
+                                    List.<JCExpression>of(createReadExpression(typeNode, maker, field, typeArgument)),
+                                    "o", fieldDecl.name.toString(), "add")));
+                }
             } else {
                 statement = maker.Exec(maker.Assign(chainDots(maker, typeNode, "o", fieldDecl.name.toString()),
-                        createInvokingMethod(maker, typeNode, fieldDecl.vartype.toString(), "from", typeNode.toName("src"))));
+                        createReadExpression(typeNode, maker, field, type)));
             }
+
             if(statement != null) {
                 JCExpression ifAnnotation = findAnnotationArgs(field, "If", "value");
                 if (ifAnnotation != null) {
@@ -277,7 +288,39 @@ public class HandlePacket implements JavacAnnotationHandler<Packet> {
 
         injectMethod(typeNode, methodDecl);
     }
-    
+
+    private JCExpression createReadExpression(JavacNode typeNode, TreeMaker maker, JavacNode field, String type) {
+        type = uncapitalize(type);
+        JCExpression methodInvocation = null;
+        JCExpression reader = findAnnotationArgs(field, "In", "reader");
+        if (reader != null) {
+            methodInvocation = createInvokingMethod(maker, typeNode, "src", "readGeneric", List.<JCExpression>of(
+                    reader));
+        } else if (endsWithAny(type, "int", "integer")) {
+            methodInvocation = createInvokingMethod(maker, typeNode, "src", "readInt");
+        } else if (endsWithAny(type, "long")) {
+            methodInvocation = createInvokingMethod(maker, typeNode, "src", "readLong");
+        } else if (endsWithAny(type, "byte")) {
+            methodInvocation = createInvokingMethod(maker, typeNode, "src", "readByte");
+        } else if (endsWithAny(type, "boolean")) {
+            methodInvocation = maker.Binary(EQ, createInvokingMethod(maker, typeNode, "b", "readBoolean"), maker.Literal(1));
+        } else if (endsWithAny(type, "short")) {
+            methodInvocation = createInvokingMethod(maker, typeNode, "src", "readShort");
+        } else if (endsWithAny(type, "char", "character")) {
+            methodInvocation = createInvokingMethod(maker, typeNode, "src", "readChar");
+        } else if (endsWithAny(type, "float")) {
+            methodInvocation = createInvokingMethod(maker, typeNode, "src", "readFloat");
+        } else if (endsWithAny(type, "double")) {
+            methodInvocation = createInvokingMethod(maker, typeNode, "src", "readDouble");
+        } else if (endsWithAny(type, "string")) {
+            methodInvocation = createInvokingMethod(maker, typeNode, "src", "readGeneric", List.<JCExpression>of(
+                    chainDots(maker, typeNode, "io", "prombok", "codec", "DefaultStringByteCodec", "class")));
+        } else {
+            methodInvocation = createInvokingMethod(maker, typeNode, capitalize(type), "from", typeNode.toName("src"));
+        }
+        return methodInvocation;
+    }
+
     public JCExpression findAnnotationArgs(JavacNode fieldNode, String annotationName, String argName) {
         for (JCAnnotation annotation : findAnnotations(fieldNode, Pattern.compile(annotationName))) {
             for (JCExpression arg : annotation.getArguments()) {
@@ -289,6 +332,28 @@ public class HandlePacket implements JavacAnnotationHandler<Packet> {
             }
         }
         return null;
+    }
+
+    public JCVariableDecl createVarDef(JavacNode typeNode, long modsFlag, String name, JCExpression vartype, JCExpression init) {
+        TreeMaker maker = typeNode.getTreeMaker();
+        return maker.VarDef(maker.Modifiers(modsFlag), typeNode.toName(name), vartype, init);
+    }
+
+    public JCNewClass createNewClass(JavacNode typeNode, JCExpression clazz, JCExpression... args) {
+        TreeMaker maker = typeNode.getTreeMaker();
+        ListBuffer<JCExpression> lb = ListBuffer.lb();
+        for (JCExpression arg : args) {
+            lb.append(arg);
+        }
+        return maker.NewClass(null, List.<JCExpression>nil(), clazz, lb.toList(), null);
+    }
+
+    public JCForLoop createInclForLoop(JavacNode typeNode, JCExpression conditionLt, JCStatement body) {
+        TreeMaker maker = typeNode.getTreeMaker();
+        return maker.ForLoop(List.<JCStatement>of(createVarDef(typeNode, 0, "i", maker.TypeIdent(TypeTags.INT), maker.Literal(0))),
+                maker.Binary(LT, maker.Ident(typeNode.toName("i")), conditionLt),
+                List.<JCExpressionStatement>of(maker.Exec(maker.Unary(POSTINC, maker.Ident(typeNode.toName("i"))))),
+                body);
     }
 
 }

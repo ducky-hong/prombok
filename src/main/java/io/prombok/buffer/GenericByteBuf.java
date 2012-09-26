@@ -29,7 +29,7 @@ public class GenericByteBuf implements WrappedByteBuf {
         this.buf = buf;
     }
 
-    private <T> GenericByteReader<T> getReader(Class<? extends GenericByteReader<T>> cls) {
+    public static <T> GenericByteReader<T> getReader(Class<? extends GenericByteReader<T>> cls) {
         GenericByteReader reader = readers.get(cls);
         if (reader == null) {
             try {
@@ -42,7 +42,7 @@ public class GenericByteBuf implements WrappedByteBuf {
         return reader;
     }
 
-    private <T> GenericByteWriter<T> getWriter(Class<? extends GenericByteWriter<T>> cls) {
+    public static <T> GenericByteWriter<T> getWriter(Class<? extends GenericByteWriter<T>> cls) {
         GenericByteWriter writer = writers.get(cls);
         if (writer == null) {
             try {

@@ -5,7 +5,9 @@ import io.prombok.annotations.In;
 import io.prombok.annotations.Out;
 import io.prombok.annotations.Packet;
 import io.prombok.codec.DefaultStringByteCodec;
-import io.prombok.codec.SwappedLongByteCodec;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @Packet
 public class Simple {
@@ -16,5 +18,6 @@ public class Simple {
     @If("fieldInt > 0")
     @In @Out public byte fieldByte;
     @In @Out public SimpleReference fieldReference;
+    @In @Out public List<Integer> fieldList;
 
 }
