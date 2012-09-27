@@ -51,6 +51,19 @@ public class ObjectTypeFieldsTest {
         assertEquals(obj, recovered);
     }
 
+    @Test
+    public void testByteArrayObjectMarshalling() {
+        ByteArrayObject obj = createByteArrayObject();
+
+        ByteBuf data = toByteBuf(obj);
+        assertNotNull(data);
+
+        ByteArrayObject recovered = from(data, ByteArrayObject.class);
+        assertNotNull(recovered);
+
+        assertEquals(obj, recovered);
+    }
+
     public static StringObject createStringObject() {
         StringObject obj = new StringObject();
         obj.fieldString = "fieldString";
@@ -77,6 +90,12 @@ public class ObjectTypeFieldsTest {
         obj.stringObject = createStringObject();
         obj.primitiveObject = PrimitiveFieldsTest.createSimplePrimitiveObject();
         obj.listObject = createListObject();
+        return obj;
+    }
+
+    public static ByteArrayObject createByteArrayObject() {
+        ByteArrayObject obj = new ByteArrayObject();
+        obj.fieldByteArray = "fieldByteArray".getBytes();
         return obj;
     }
 
