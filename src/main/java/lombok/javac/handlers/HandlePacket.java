@@ -131,7 +131,7 @@ public class HandlePacket implements JavacAnnotationHandler<Packet> {
             String type = fieldDecl.vartype.toString();
 
             JCStatement statement = null;
-            if (startsWith(type, "List")) {
+            if (startsWith(type, "List<")) {
                 String typeArgument = substringBetween(type, "<", ">");
                 if (typeArgument != null && !typeArgument.contains(",")) {
                     JCStatement sizeStatement = createInvokingStatement(maker, typeNode, "gbuf", "writeInt",
@@ -240,7 +240,7 @@ public class HandlePacket implements JavacAnnotationHandler<Packet> {
             String fieldName = fieldDecl.name.toString();
             JCStatement statement = null;
 
-            if (startsWith(type, "List")) {
+            if (startsWith(type, "List<")) {
                 String typeArgument = substringBetween(type, "<", ">");
                 if (typeArgument != null && !typeArgument.contains(",")) {
                     JCVariableDecl countStatement = createVarDef(typeNode, Flags.FINAL, fieldName + "Count",

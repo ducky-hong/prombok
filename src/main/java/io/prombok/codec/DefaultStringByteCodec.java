@@ -14,9 +14,10 @@ public class DefaultStringByteCodec implements GenericByteReader<String>, Generi
     public String read(ByteBuf src) {
         final int start = src.readerIndex();
         while (src.readChar() != 0);
-        byte[] data = src.copy(start, src.readerIndex() - start).array();
+        int endOfString = src.readerIndex() - start - 2; // -2 is for an whitespace seperator.
+        byte[] data = src.copy(start, endOfString).array();
         try {
-            return new String(src.copy(start, src.readerIndex() - start).array(), ENCODING);
+            return new String(data, ENCODING);
         } catch (UnsupportedEncodingException e) {
             return new String(data);
         }
