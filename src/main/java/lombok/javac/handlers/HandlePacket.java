@@ -29,6 +29,7 @@ public class HandlePacket implements JavacAnnotationHandler<Packet> {
     public boolean handle(AnnotationValues<Packet> annotation, JCTree.JCAnnotation ast, JavacNode annotationNode) {
         markAnnotationAsProcessed(annotationNode, Packet.class);
         JavacNode typeNode = annotationNode.up();
+        new HandleToString().generateToStringForType(typeNode, annotationNode);
         return generatePacketMethods(typeNode);
     }
 
